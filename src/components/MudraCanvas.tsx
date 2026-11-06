@@ -681,7 +681,6 @@ export function MudraCanvas({
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const [activePreset, setActivePreset] = useState<'front' | 'profile' | 'top' | 'angle'>('front');
   const [altaEnabled] = useState<boolean>(true);
-  const [palmMandalaEnabled] = useState<boolean>(true);
 
   // Normalization helper for consistent storage keys
   const getMudraStorageKey = (m: Mudra | null | undefined) => {
@@ -968,25 +967,6 @@ export function MudraCanvas({
                 poseRef={poseRef}
                 altaEnabled={altaEnabled}
               />
-
-              {/* Classical Circular Alta Mandala on Front Palm Surface */}
-              {altaEnabled && palmMandalaEnabled && !isInverted && (
-                <mesh
-                  position={[0.08, 0.61, -0.643]}
-                  rotation={[0, Math.PI, 0]}
-                >
-                  <circleGeometry args={[0.082, 48]} />
-                  <meshStandardMaterial
-                    color="#B91C1C"
-                    roughness={0.22}
-                    metalness={0.12}
-                    polygonOffset
-                    polygonOffsetFactor={-2}
-                    polygonOffsetUnits={-2}
-                    side={THREE.DoubleSide}
-                  />
-                </mesh>
-              )}
             </group>
 
             {/* 360° OrbitControls */}
