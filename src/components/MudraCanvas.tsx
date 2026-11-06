@@ -449,118 +449,148 @@ function HandModel({
     });
   }, [clonedScene, altaEnabled]);
 
-  // Exact bone mapping from hand2.glb (evaluated once per clonedScene)
+  // Exact bone mapping strictly matching hand_neutral.glb node hierarchy
   const bones = useMemo(() => {
+    const getBone = (exactName: string, prefixFallback?: string): THREE.Bone | null => {
+      let b = clonedScene.getObjectByName(exactName) as THREE.Bone | null;
+      if (!b && prefixFallback) {
+        clonedScene.traverse((obj) => {
+          if (!b && ((obj as THREE.Bone).isBone || obj.type === 'Bone')) {
+            if (obj.name === prefixFallback || obj.name.startsWith(prefixFallback + '_')) {
+              b = obj as THREE.Bone;
+            }
+          }
+        });
+      }
+      return b;
+    };
+
     return {
-      index1: clonedScene.getObjectByName('Index1_16') as THREE.Bone | null,
-      index2: clonedScene.getObjectByName('Index2_15') as THREE.Bone | null,
-      index3: clonedScene.getObjectByName('Index3_14') as THREE.Bone | null,
-      middle1: clonedScene.getObjectByName('Middle1_13') as THREE.Bone | null,
-      middle2: clonedScene.getObjectByName('Middle2_12') as THREE.Bone | null,
-      middle3: clonedScene.getObjectByName('Middle3_11') as THREE.Bone | null,
-      ring1: clonedScene.getObjectByName('Ring1_10') as THREE.Bone | null,
-      ring2: clonedScene.getObjectByName('Ring2_9') as THREE.Bone | null,
-      ring3: clonedScene.getObjectByName('Ring3_8') as THREE.Bone | null,
-      pinky1: clonedScene.getObjectByName('Pinky1_7') as THREE.Bone | null,
-      pinky2: clonedScene.getObjectByName('Pinky2_6') as THREE.Bone | null,
-      pinky3: clonedScene.getObjectByName('Pinky3_5') as THREE.Bone | null,
-      thumb1: clonedScene.getObjectByName('Thumb1_18') as THREE.Bone | null,
-      thumb2: clonedScene.getObjectByName('Thumb2_17') as THREE.Bone | null,
-      palm: clonedScene.getObjectByName('Palm_19') as THREE.Bone | null,
+      index1: getBone('Index1_16', 'Index1'),
+      index2: getBone('Index2_15', 'Index2'),
+      index3: getBone('Index3_14', 'Index3'),
+      middle1: getBone('Middle1_13', 'Middle1'),
+      middle2: getBone('Middle2_12', 'Middle2'),
+      middle3: getBone('Middle3_11', 'Middle3'),
+      ring1: getBone('Ring1_10', 'Ring1'),
+      ring2: getBone('Ring2_9', 'Ring2'),
+      ring3: getBone('Ring3_8', 'Ring3'),
+      pinky1: getBone('Pinky1_7', 'Pinky1'),
+      pinky2: getBone('Pinky2_6', 'Pinky2'),
+      pinky3: getBone('Pinky3_5', 'Pinky3'),
+      thumb1: getBone('Thumb1_18', 'Thumb1'),
+      thumb2: getBone('Thumb2_17', 'Thumb2'),
+      palm: getBone('Palm_19', 'Palm'),
     };
   }, [clonedScene]);
+
+  // 1. Neutral Base Pose Reset Before Morphing:
+  // Reset each finger bone to its neutral rest orientation before applying target angles
+  useEffect(() => {
+    Object.values(bones).forEach((bone) => {
+      if (bone) {
+        const r = restEulers.current.get(bone.name);
+        if (r) {
+          bone.rotation.copy(r);
+        } else {
+          bone.rotation.set(0, 0, 0);
+        }
+      }
+    });
+  }, [selectedMudra?.id, bones]);
 
   useFrame((_, delta) => {
     const p = poseRef.current;
     if (!p) return;
 
+    // 2. Safe Rotation Application: Clamped interpolation step to prevent overshooting or explosive spikes
+    const step = Math.min(delta * 8, 1);
+
+    const applySafeRotation = (
+      bone: THREE.Bone | null,
+      targetX: number,
+      targetY: number,
+      targetZ: number
+    ) => {
+      if (!bone) return;
+      // Absolute target angles strictly clamped within safe anatomical limits
+      const safeX = THREE.MathUtils.clamp(targetX, -Math.PI, Math.PI);
+      const safeY = THREE.MathUtils.clamp(targetY, -Math.PI, Math.PI);
+      const safeZ = THREE.MathUtils.clamp(targetZ, -Math.PI, Math.PI);
+
+      bone.rotation.x = THREE.MathUtils.lerp(bone.rotation.x, safeX, step);
+      bone.rotation.y = THREE.MathUtils.lerp(bone.rotation.y, safeY, step);
+      bone.rotation.z = THREE.MathUtils.lerp(bone.rotation.z, safeZ, step);
+    };
+
     if (p.manual) {
-      // 1. Direct 60fps instant articulation from slider values (zero damping lag)
-      // Index (positive curl bends inward toward palm, negative curls hyperextend backward)
+      // Direct slider adjustments with smooth clamped lerp
       if (bones.index1) {
-        const r = restEulers.current.get(bones.index1.name);
-        if (r) {
-          bones.index1.rotation.z = r.z + p.index.curl * 0.75;
-          bones.index1.rotation.x = r.x + p.index.spread;
-        }
+        const r = restEulers.current.get(bones.index1.name) || new THREE.Euler();
+        applySafeRotation(bones.index1, r.x + p.index.spread, r.y, r.z + p.index.curl * 0.75);
       }
       if (bones.index2) {
-        const r = restEulers.current.get(bones.index2.name);
-        if (r) bones.index2.rotation.z = r.z + p.index.curl * 0.85;
+        const r = restEulers.current.get(bones.index2.name) || new THREE.Euler();
+        applySafeRotation(bones.index2, r.x, r.y, r.z + p.index.curl * 0.85);
       }
       if (bones.index3) {
-        const r = restEulers.current.get(bones.index3.name);
-        if (r) bones.index3.rotation.z = r.z + p.index.curl * 0.65;
+        const r = restEulers.current.get(bones.index3.name) || new THREE.Euler();
+        applySafeRotation(bones.index3, r.x, r.y, r.z + p.index.curl * 0.65);
       }
 
       // Middle
       if (bones.middle1) {
-        const r = restEulers.current.get(bones.middle1.name);
-        if (r) {
-          bones.middle1.rotation.z = r.z + p.middle.curl * 0.75;
-          bones.middle1.rotation.x = r.x + p.middle.spread;
-        }
+        const r = restEulers.current.get(bones.middle1.name) || new THREE.Euler();
+        applySafeRotation(bones.middle1, r.x + p.middle.spread, r.y, r.z + p.middle.curl * 0.75);
       }
       if (bones.middle2) {
-        const r = restEulers.current.get(bones.middle2.name);
-        if (r) bones.middle2.rotation.z = r.z + p.middle.curl * 0.85;
+        const r = restEulers.current.get(bones.middle2.name) || new THREE.Euler();
+        applySafeRotation(bones.middle2, r.x, r.y, r.z + p.middle.curl * 0.85);
       }
       if (bones.middle3) {
-        const r = restEulers.current.get(bones.middle3.name);
-        if (r) bones.middle3.rotation.z = r.z + p.middle.curl * 0.65;
+        const r = restEulers.current.get(bones.middle3.name) || new THREE.Euler();
+        applySafeRotation(bones.middle3, r.x, r.y, r.z + p.middle.curl * 0.65);
       }
 
       // Ring
       if (bones.ring1) {
-        const r = restEulers.current.get(bones.ring1.name);
-        if (r) {
-          bones.ring1.rotation.z = r.z + p.ring.curl * 0.75;
-          bones.ring1.rotation.x = r.x + p.ring.spread;
-        }
+        const r = restEulers.current.get(bones.ring1.name) || new THREE.Euler();
+        applySafeRotation(bones.ring1, r.x + p.ring.spread, r.y, r.z + p.ring.curl * 0.75);
       }
       if (bones.ring2) {
-        const r = restEulers.current.get(bones.ring2.name);
-        if (r) bones.ring2.rotation.z = r.z + p.ring.curl * 0.85;
+        const r = restEulers.current.get(bones.ring2.name) || new THREE.Euler();
+        applySafeRotation(bones.ring2, r.x, r.y, r.z + p.ring.curl * 0.85);
       }
       if (bones.ring3) {
-        const r = restEulers.current.get(bones.ring3.name);
-        if (r) bones.ring3.rotation.z = r.z + p.ring.curl * 0.65;
+        const r = restEulers.current.get(bones.ring3.name) || new THREE.Euler();
+        applySafeRotation(bones.ring3, r.x, r.y, r.z + p.ring.curl * 0.65);
       }
 
       // Pinky
       if (bones.pinky1) {
-        const r = restEulers.current.get(bones.pinky1.name);
-        if (r) {
-          bones.pinky1.rotation.z = r.z + p.pinky.curl * 0.75;
-          bones.pinky1.rotation.x = r.x + p.pinky.spread;
-        }
+        const r = restEulers.current.get(bones.pinky1.name) || new THREE.Euler();
+        applySafeRotation(bones.pinky1, r.x + p.pinky.spread, r.y, r.z + p.pinky.curl * 0.75);
       }
       if (bones.pinky2) {
-        const r = restEulers.current.get(bones.pinky2.name);
-        if (r) bones.pinky2.rotation.z = r.z + p.pinky.curl * 0.85;
+        const r = restEulers.current.get(bones.pinky2.name) || new THREE.Euler();
+        applySafeRotation(bones.pinky2, r.x, r.y, r.z + p.pinky.curl * 0.85);
       }
       if (bones.pinky3) {
-        const r = restEulers.current.get(bones.pinky3.name);
-        if (r) bones.pinky3.rotation.z = r.z + p.pinky.curl * 0.65;
+        const r = restEulers.current.get(bones.pinky3.name) || new THREE.Euler();
+        applySafeRotation(bones.pinky3, r.x, r.y, r.z + p.pinky.curl * 0.65);
       }
 
       // Thumb
       if (bones.thumb1) {
-        const r = restEulers.current.get(bones.thumb1.name);
-        if (r) {
-          bones.thumb1.rotation.x = r.x + p.thumb.spread;
-          bones.thumb1.rotation.y = r.y + p.thumb.oppose;
-          bones.thumb1.rotation.z = r.z + p.thumb.curl;
-        }
+        const r = restEulers.current.get(bones.thumb1.name) || new THREE.Euler();
+        applySafeRotation(bones.thumb1, r.x + p.thumb.spread, r.y + p.thumb.oppose, r.z + p.thumb.curl);
       }
       if (bones.thumb2) {
-        const r = restEulers.current.get(bones.thumb2.name);
-        if (r) {
-          bones.thumb2.rotation.z = r.z + p.thumb.curl * 0.5;
-        }
+        const r = restEulers.current.get(bones.thumb2.name) || new THREE.Euler();
+        applySafeRotation(bones.thumb2, r.x, r.y, r.z + p.thumb.curl * 0.5);
       }
     } else {
-      // 2. Smoothly interpolated canonical dictionary posture
+      // 3. Smoothly interpolated canonical dictionary posture
       const mudraId = selectedMudra?.id?.toLowerCase().trim() || '';
       const mudraName = selectedMudra?.name?.toLowerCase().trim() || '';
       const matchedKey = Object.keys(MUDRA_POSES).find(
@@ -572,7 +602,7 @@ function HandModel({
       );
       const pose = (matchedKey ? MUDRA_POSES[matchedKey] : null) || MUDRA_POSES.pataka;
 
-      const dampFingerChain = (
+      const animateFingerChain = (
         b1: THREE.Bone | null,
         b2: THREE.Bone | null,
         b3: THREE.Bone | null,
@@ -586,58 +616,45 @@ function HandModel({
           : [bend * 0.75, bend * 0.85, bend * 0.65];
 
         if (b1) {
-          const r = restEulers.current.get(b1.name);
-          if (r) {
-            const targetZ = r.z + jointBends[0] + extraZ;
-            const targetX = r.x + extraX;
-            b1.rotation.z = THREE.MathUtils.damp(b1.rotation.z, targetZ, 12, delta);
-            b1.rotation.x = THREE.MathUtils.damp(b1.rotation.x, targetX, 12, delta);
-          }
+          const r = restEulers.current.get(b1.name) || new THREE.Euler();
+          const targetZ = r.z + jointBends[0] + extraZ;
+          const targetX = r.x + extraX;
+          applySafeRotation(b1, targetX, r.y, targetZ);
         }
         if (b2) {
-          const r = restEulers.current.get(b2.name);
-          if (r) {
-            const targetZ = r.z + jointBends[1];
-            b2.rotation.z = THREE.MathUtils.damp(b2.rotation.z, targetZ, 12, delta);
-          }
+          const r = restEulers.current.get(b2.name) || new THREE.Euler();
+          const targetZ = r.z + jointBends[1];
+          applySafeRotation(b2, r.x, r.y, targetZ);
         }
         if (b3) {
-          const r = restEulers.current.get(b3.name);
-          if (r) {
-            const targetZ = r.z + jointBends[2];
-            b3.rotation.z = THREE.MathUtils.damp(b3.rotation.z, targetZ, 12, delta);
-          }
+          const r = restEulers.current.get(b3.name) || new THREE.Euler();
+          const targetZ = r.z + jointBends[2];
+          applySafeRotation(b3, r.x, r.y, targetZ);
         }
       };
 
-      dampFingerChain(bones.index1, bones.index2, bones.index3, pose.index);
-      dampFingerChain(bones.middle1, bones.middle2, bones.middle3, pose.middle);
-      dampFingerChain(bones.ring1, bones.ring2, bones.ring3, pose.ring);
-      dampFingerChain(bones.pinky1, bones.pinky2, bones.pinky3, pose.pinky);
+      animateFingerChain(bones.index1, bones.index2, bones.index3, pose.index);
+      animateFingerChain(bones.middle1, bones.middle2, bones.middle3, pose.middle);
+      animateFingerChain(bones.ring1, bones.ring2, bones.ring3, pose.ring);
+      animateFingerChain(bones.pinky1, bones.pinky2, bones.pinky3, pose.pinky);
 
       const thumbSpread = pose.thumb.spread ?? pose.thumb.y ?? 0;
       const thumbOppose = pose.thumb.oppose ?? pose.thumb.x ?? 0;
       const thumbCurl = pose.thumb.curl ?? pose.thumb.z ?? 0;
 
       if (bones.thumb1) {
-        const r = restEulers.current.get(bones.thumb1.name);
-        if (r) {
-          bones.thumb1.rotation.x = THREE.MathUtils.damp(bones.thumb1.rotation.x, r.x + thumbSpread, 10, delta);
-          bones.thumb1.rotation.y = THREE.MathUtils.damp(bones.thumb1.rotation.y, r.y + thumbOppose, 10, delta);
-          bones.thumb1.rotation.z = THREE.MathUtils.damp(bones.thumb1.rotation.z, r.z + thumbCurl, 10, delta);
-        }
+        const r = restEulers.current.get(bones.thumb1.name) || new THREE.Euler();
+        applySafeRotation(bones.thumb1, r.x + thumbSpread, r.y + thumbOppose, r.z + thumbCurl);
       }
       if (bones.thumb2) {
-        const r = restEulers.current.get(bones.thumb2.name);
-        if (r) {
-          const isBent =
-            pose.thumb === THUMB_STATES.PINCH ||
-            pose.thumb === THUMB_STATES.LOCK ||
-            pose.thumb === THUMB_STATES.TUCK ||
-            thumbCurl > 0.6;
-          const tipBend = isBent ? (thumbCurl > 0.6 ? thumbCurl * 0.4 : 0.35) : 0;
-          bones.thumb2.rotation.z = THREE.MathUtils.damp(bones.thumb2.rotation.z, r.z + tipBend, 10, delta);
-        }
+        const r = restEulers.current.get(bones.thumb2.name) || new THREE.Euler();
+        const isBent =
+          pose.thumb === THUMB_STATES.PINCH ||
+          pose.thumb === THUMB_STATES.LOCK ||
+          pose.thumb === THUMB_STATES.TUCK ||
+          thumbCurl > 0.6;
+        const tipBend = isBent ? (thumbCurl > 0.6 ? thumbCurl * 0.4 : 0.35) : 0;
+        applySafeRotation(bones.thumb2, r.x, r.y, r.z + tipBend);
       }
     }
   });
@@ -772,16 +789,22 @@ export function MudraCanvas({
           if (typeof saved.inverted === 'boolean') {
             setIsInverted(saved.inverted);
           }
+          const parseSafeAngle = (val: any, fallback: number = 0): number => {
+            const num = typeof val === 'number' ? val : parseFloat(val);
+            if (isNaN(num)) return fallback;
+            return THREE.MathUtils.clamp(num, -Math.PI, Math.PI);
+          };
+
           poseRef.current = {
             manual: true,
-            index: { curl: saved.index.curl ?? 0, spread: saved.index.spread ?? 0 },
-            middle: { curl: saved.middle.curl ?? 0, spread: saved.middle.spread ?? 0 },
-            ring: { curl: saved.ring.curl ?? 0, spread: saved.ring.spread ?? 0 },
-            pinky: { curl: saved.pinky.curl ?? 0, spread: saved.pinky.spread ?? 0 },
+            index: { curl: parseSafeAngle(saved.index.curl, 0), spread: parseSafeAngle(saved.index.spread, 0) },
+            middle: { curl: parseSafeAngle(saved.middle.curl, 0), spread: parseSafeAngle(saved.middle.spread, 0) },
+            ring: { curl: parseSafeAngle(saved.ring.curl, 0), spread: parseSafeAngle(saved.ring.spread, 0) },
+            pinky: { curl: parseSafeAngle(saved.pinky.curl, 0), spread: parseSafeAngle(saved.pinky.spread, 0) },
             thumb: {
-              curl: saved.thumb.curl ?? 0.28,
-              spread: saved.thumb.spread ?? -0.42,
-              oppose: saved.thumb.oppose ?? 0.22,
+              curl: parseSafeAngle(saved.thumb.curl, 0.28),
+              spread: parseSafeAngle(saved.thumb.spread, -0.42),
+              oppose: parseSafeAngle(saved.thumb.oppose, 0.22),
             },
           };
           return;
@@ -824,16 +847,16 @@ export function MudraCanvas({
     const camera = controls.object;
 
     if (preset === 'front') {
-      camera.position.set(0, 0.15, 3.8);
+      camera.position.set(0, 0, 3);
     } else if (preset === 'profile') {
-      camera.position.set(3.2, 0.15, 1.8);
+      camera.position.set(3, 0, 0);
     } else if (preset === 'top') {
-      camera.position.set(0, 3.4, 1.8);
+      camera.position.set(0, 3.5, 0);
     } else if (preset === 'angle') {
       camera.position.set(2.2, 1.35, 3.0);
     }
 
-    controls.target.set(0, 0.15, 0);
+    controls.target.set(0, 0, 0);
     controls.update();
   };
 
@@ -899,7 +922,7 @@ export function MudraCanvas({
           }
         >
           <Canvas
-            camera={{ position: [0, 0.15, 3.8], fov: 35 }}
+            camera={{ position: [0, 0, 3], fov: 35 }}
             className="w-full h-full"
             gl={{ antialias: true, alpha: true }}
             shadows
@@ -932,15 +955,11 @@ export function MudraCanvas({
               blur={2.4}
             />
 
-            {/* Center Hand Model container - rotated and dynamically scaled for mobile screens */}
+            {/* Center Hand Model container - default front facing orientation facing the palm */}
             <group
-              scale={isMobile ? 0.88 : 1.1}
-              position={
-                isInverted
-                  ? (isMobile ? [0.06, -0.38, -0.92] : [0.08, -0.48, -0.92])
-                  : (isMobile ? [-0.06, -0.38, 0.92] : [-0.08, -0.48, 0.92])
-              }
-              rotation={[0, isInverted ? 0 : Math.PI, 0]}
+              scale={isMobile ? 0.88 : 1.05}
+              position={isMobile ? [0, -0.4, 0] : [0, -0.6, 0]}
+              rotation={[0, isInverted ? Math.PI : 0, 0]}
             >
               <HandModel
                 modelPath={modelPath}
@@ -949,11 +968,11 @@ export function MudraCanvas({
                 altaEnabled={altaEnabled}
               />
 
-              {/* Classical Circular Alta Mandala on Front Palm Surface (shown on palm, never on inverted back/knuckles) */}
+              {/* Classical Circular Alta Mandala on Front Palm Surface */}
               {altaEnabled && palmMandalaEnabled && !isInverted && (
                 <mesh
                   position={[-0.08, 0.61, 0.643]}
-                  rotation={[0, Math.PI, 0]}
+                  rotation={[0, 0, 0]}
                 >
                   <circleGeometry args={[0.082, 48]} />
                   <meshStandardMaterial
@@ -972,7 +991,7 @@ export function MudraCanvas({
             {/* 360° OrbitControls */}
             <OrbitControls
               ref={controlsRef}
-              target={[0, 0.15, 0]}
+              target={[0, 0, 0]}
               enableZoom={true}
               enablePan={false}
               maxPolarAngle={Math.PI / 1.7}
