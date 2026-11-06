@@ -152,11 +152,11 @@ const MUDRA_POSES: Record<string, MudraPoseConfig> = {
 
   // 4. Kartarimukha
   kartarimukha: {
-    index: { bend: FINGER_STATES.FLAT, y: -0.34 },
-    middle: { bend: FINGER_STATES.FLAT, y: 0.28 },
-    ring: { bend: 1.18, y: -0.02 },
-    pinky: { bend: 1.18, y: -0.06 },
-    thumb: { x: 0.62, y: -0.58, z: 0.35 },
+    index: { bend: FINGER_STATES.FLAT, spread: -0.18 },
+    middle: { bend: FINGER_STATES.FLAT, spread: 0.18 },
+    ring: { bend: FINGER_STATES.CURL, spread: 0.0 },
+    pinky: { bend: FINGER_STATES.CURL, spread: -0.04 },
+    thumb: { curl: 1.35, spread: -0.38, oppose: 0.58 },
   },
 
   // 5. Mayura
@@ -277,11 +277,11 @@ const MUDRA_POSES: Record<string, MudraPoseConfig> = {
 
   // 17. Mrigashirsha
   mrigashirsha: {
-    index: FINGER_STATES.HALF,
-    middle: FINGER_STATES.HALF,
-    ring: FINGER_STATES.HALF,
-    pinky: { bend: FINGER_STATES.FLAT, y: 0.14 },
-    thumb: THUMB_STATES.UP,
+    index: { bend: FINGER_STATES.FLAT, spread: -0.12 },
+    middle: FINGER_STATES.PINCH,
+    ring: FINGER_STATES.PINCH,
+    pinky: { bend: FINGER_STATES.FLAT, spread: 0.14 },
+    thumb: THUMB_STATES.PINCH,
   },
 
   // 18. Simhamukha
@@ -847,16 +847,16 @@ export function MudraCanvas({
     const camera = controls.object;
 
     if (preset === 'front') {
-      camera.position.set(0, 0, 3);
+      camera.position.set(0, 0.1, 4.2);
     } else if (preset === 'profile') {
-      camera.position.set(3, 0, 0);
+      camera.position.set(4.2, 0.1, 0);
     } else if (preset === 'top') {
-      camera.position.set(0, 3.5, 0);
+      camera.position.set(0, 4.2, 0);
     } else if (preset === 'angle') {
-      camera.position.set(2.2, 1.35, 3.0);
+      camera.position.set(2.8, 1.8, 3.2);
     }
 
-    controls.target.set(0, 0, 0);
+    controls.target.set(0, 0.1, 0);
     controls.update();
   };
 
@@ -922,7 +922,7 @@ export function MudraCanvas({
           }
         >
           <Canvas
-            camera={{ position: [0, 0, 3], fov: 35 }}
+            camera={{ position: [0, 0, 4.2], fov: 45 }}
             className="w-full h-full"
             gl={{ antialias: true, alpha: true }}
             shadows
@@ -949,16 +949,16 @@ export function MudraCanvas({
 
             {/* Contact ground shadows */}
             <ContactShadows
-              position={[0, -1.2, 0]}
+              position={[0, -1.35, 0]}
               opacity={0.32}
               scale={4.8}
               blur={2.4}
             />
 
-            {/* Center Hand Model container - default front facing orientation facing the palm */}
+            {/* Center Hand Model container - scaled and positioned so fingertips and wrist never clip */}
             <group
-              scale={isMobile ? 0.88 : 1.05}
-              position={isMobile ? [0, -0.4, 0] : [0, -0.6, 0]}
+              scale={isMobile ? 0.68 : 0.78}
+              position={isMobile ? [0, -0.75, 0] : [0, -0.95, 0]}
               rotation={[0, isInverted ? Math.PI : 0, 0]}
             >
               <HandModel
@@ -991,12 +991,12 @@ export function MudraCanvas({
             {/* 360° OrbitControls */}
             <OrbitControls
               ref={controlsRef}
-              target={[0, 0, 0]}
+              target={[0, 0.1, 0]}
               enableZoom={true}
               enablePan={false}
               maxPolarAngle={Math.PI / 1.7}
-              minDistance={1.8}
-              maxDistance={7.0}
+              minDistance={2.5}
+              maxDistance={6.0}
               dampingFactor={0.08}
               enableDamping={true}
               touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
