@@ -960,7 +960,7 @@ export function MudraCanvas({
             <group
               scale={isMobile ? 0.88 : 1.05}
               position={isMobile ? [0, -0.4, 0] : [0, -0.6, 0]}
-              rotation={[0, isInverted ? Math.PI : 0, 0]}
+              rotation={[0, isInverted ? 0 : Math.PI, 0]}
             >
               <HandModel
                 modelPath={modelPath}
@@ -972,8 +972,8 @@ export function MudraCanvas({
               {/* Classical Circular Alta Mandala on Front Palm Surface */}
               {altaEnabled && palmMandalaEnabled && !isInverted && (
                 <mesh
-                  position={[-0.08, 0.61, 0.643]}
-                  rotation={[0, 0, 0]}
+                  position={[0.08, 0.61, -0.643]}
+                  rotation={[0, Math.PI, 0]}
                 >
                   <circleGeometry args={[0.082, 48]} />
                   <meshStandardMaterial
